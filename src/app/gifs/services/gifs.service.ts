@@ -9,7 +9,7 @@ import { Gif } from '../interfaces/gif.interface';
 const GIF_KEY = 'gifsHistory';
 
 const loadFromLocalStorage = () => {
-  const gifsFromLocalStorage = localStorage.getItem(GIF_KEY) ?? '{';
+  const gifsFromLocalStorage = localStorage.getItem(GIF_KEY) ?? '{}';
   const gifs = JSON.parse(gifsFromLocalStorage);
   return gifs;
 };
@@ -18,11 +18,21 @@ const loadFromLocalStorage = () => {
 export class GifService {
   private http = inject(HttpClient);
 
+  trendingGifs = signal<Gif[]>([]);
+  trendigGifsLoading = signal(false);
+
+  private trendingPage = signal(0);
+
   searchHistory = signal<Record<string, Gif[]>>(loadFromLocalStorage());
   searchHistoryKeys = computed(() => Object.keys(this.searchHistory()));
 
-  trendingGifs = signal<Gif[]>([]);
-  trendigGifsLoading = signal(true);
+  trendingGifsGroup = computed<Gif[][]>(() => {
+    const groups = [];
+    for (let i = 0; i < this.trendingGifs().length; i += 3) {
+      groups.push(this.trendingGifs().slice(i, i + 3));
+    }
+    return groups;
+  });
 
   constructor() {
     this.loadTrendingGifs();
@@ -34,16 +44,23 @@ export class GifService {
   });
 
   loadTrendingGifs() {
+    if (this.trendigGifsLoading()) return;
+
+    this.trendigGifsLoading.set(true);
+    const offset = this.trendingPage() * 20;
+
     this.http
       .get<GiphyResponse>(`${environment.giphyUrl}/gifs/trending`, {
         params: {
           api_key: environment.giphyApiKey,
           limit: 20,
+          offset: this.trendingPage() * 20,
         },
       })
       .subscribe((resp) => {
         const gifs = GifMapper.mapGiphytemsToGifArray(resp.data);
-        this.trendingGifs.set(gifs);
+        this.trendingGifs.update((currentGifs) => [...currentGifs, ...gifs]);
+        this.trendingPage.update((page) => page + 1);
         this.trendigGifsLoading.set(false);
       });
   }
